@@ -1,18 +1,5 @@
 package bcfw;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.io.PrintWriter;
-import java.io.UnsupportedEncodingException;
-import java.util.ArrayList;
-import java.util.PriorityQueue;
-import java.util.Random;
-
-
-
 
 //import teste.WPMainfunction;
 import vdf.VDF;
@@ -21,25 +8,26 @@ public class BCFW {
 	public BCFW(stoppingCriteria sc){
 		this.sc = sc;
 	}
-	// O que segue é um grafo
-	public int V; //número de nós
-	public int E;//número de links
-	public int Centroides; //os nós de 0 a Centroides-1 são centróides
-	public int fromNode[]; //node form de cada ligação
-	public int toNode[]; //node To dde cada ligação
-	public int arrivingLinks[][];//ligações entrantes
-	public int exitingLinks[][];//ligações saintes
-	public double linkParameters[][];//parâmetros de cada ligação
-	public  VDF[] VDFs;	//Funções vdfs
+	// What follows is a graph
+	public int V; //number of nodes
+	public int E;//number of links
+	public int Centroides; //Nodes from 0 to Centroides-1 are centroids
+	public int fromNode[]; //"from" node of each link
+	public int toNode[]; //"to" node of each link
+	public int arrivingLinks[][];//incoming links of each node
+	public int exitingLinks[][];//outgoing links of each node
+	public double linkParameters[][];//links parameters
+	public  VDF[] VDFs;	//volume delay functions of each link
 	public boolean useConnectors = true;
 	long p1 , p2,p3,p4;
-	//O que segue é a matriz 
+	//What follows is the matrix
 	public double[][] OD;
 	
-	//Constantes
+	//Constants
 	final int LINE_SEARCH_POINTS = 12;//number of points to evaluate
 	final double LINE_SEARCH_GROWTH = 1.2;// how much can the step grow each step
-	final stoppingCriteria sc;
+	public stoppingCriteria sc;
+	final int verbosity = 144;
 	
 	class step_result{
 		double β_0;
@@ -63,9 +51,6 @@ public class BCFW {
 	
 	public <T> T assign(Analisator<T> analisator){
 		int k = 1;
-		double tot=0.0;
-		for(double[] arr : OD) for (double d : arr) tot+=d;
-		System.out.println("A matriz OD JAVA original tem "+tot);
 		double[] empty_network = new double[E];//Full of zeros by default 
 		int[][][] shortest_paths =  ShortestPath(empty_network);
 		double[] x_k = putVolumes(shortest_paths);
@@ -85,27 +70,20 @@ public class BCFW {
 		p4 = 0;
 
 		while(!sc.shouldStop(obtained)){
-			System.out.println("Iteração "+k+" objetivo: "+ObjectiveFunction(x_k));//double calculation of ObjectiveFunction
-			/*System.out.println("Les volumes sont: ");
-			for(int i =0; i<x_k.length;i++) System.out.print(" "+x_k[i]);*/
-			//System.out.println("novos volumes");
-			//System.out.println("2392 "+x_k[2392]);
-			//System.out.println("712 "+x_k[712]);
-			//System.out.println("2433 "+x_k[2433]);
-
+			if(verbosity>5){
+			System.out.println("Iteration  "+k+" objective: "+ObjectiveFunction(x_k));
 			System.out.print("\n");
+			}
 			r = normal_step(x_k,s_km1,s_km2,τ_km1,τ_km2);
 
 			double[] d_k = r.d;
 			double τ_k = r.τ;
 			double[] x_kp1 = Positive(Plus(x_k ,Times(τ_k  , d_k)));//Should always be positive except for numeric errors
 			double[] s_k = Plus(x_k , d_k);
-
-			System.out.println("o passo é "+τ_k);
-			/*System.out.println("A direção dos novos volumes é ");
-			for(double vol : d_k) System.out.print(vol+" ");*/
+			if(verbosity>5){
+			System.out.println("The step is "+τ_k);
 			System.out.println("");		
-
+			}
 			//This formula explains the analysis
 			//β_0+β_1+β_2 = 1
 			//s_k = β_0 * y_k + β_1*s_km1 +β_2*s_km2 = β_0 * y_k + (1-β_0)*(β_1/(β_1+β_2)*s_km1 + β_2/(β_1+β_2)*s_km2)
@@ -139,15 +117,14 @@ public class BCFW {
 			s_km1r = s_kr;
 			double UB = this.ObjectiveFunction(x_k);//Upper Bound
 			double BRG = (UB - BLB)/UB;//Best relative Gap
+			System.out.println("SC SC SC");
+			System.out.println(BRG);
+			System.out.println(UB);
+			System.out.println(BLB);
+
+
 			obtained = new stoppingCriteria(BRG , k);
 		}
-		System.out.println("\n\n\n Tempos ");
-		System.out.println("p1 "+p1/1000000);
-		System.out.println("p2 "+p2/1000000);
-		System.out.println("p3 "+p3/1000000);
-		System.out.println("p4 "+p4/1000000+"\n\n\n");
-
-		//for(int i = 0 ; i< x_k.length;i++) System.out.println(x_k[i]);
 		return x_kr;
 	}
 	//gives x if x>0 0 otherwise
@@ -157,38 +134,33 @@ public class BCFW {
 		for(int i =0; i<plus.length ; i++) if(plus[i]<0.0) plus[i]=0.0;
 		return plus;
 	}
-	//TODO passo negativo
-	//TODO passo nulo -> todo o resto é zero
 	/**
-	 * Os resultados são constantes que devem permitir a um analisador fazer seu trabalho.
-	 * No entanto, os novos volumes devem forçosamente ser calculados.
-	 * Esta etapa funciona como um Frank-Wolfe normal se os dois passos anteriores não forem estritamente maiores que zero
-	 * @param x_k volumes nas ligação da iteração anterior(k)
-	 * @return um objeto com os fatores, para se analisar
+	 * The results are values that should allow an analyser to do its work
+	 * The volumes by link however must always be calculated
+	 * This iteration works as a normal Frank-Wolfe if the last two steps are not strictly bigger than 0
+	 * @param x_k volumes on links in the last iteration(k)
+	 * @return an object to the analyser
 	 */
 	public step_result normal_step(double[] x_k , double[] s_km1 , double[] s_km2,double τ_km1,double τ_km2 ){
 
 		int[][][] matriz_de_caminhos = ShortestPath(x_k);//of a "full-of-ones matrix"
 
 		double[] y_k = putVolumes(matriz_de_caminhos);
-		System.out.println("velho tempo "+Gradient(x_k,x_k));
-		System.out.println("desejado tempo "+Gradient(x_k,y_k));
-		//double τ_k_num = Gradient(x_k,d_k);
-		//System.out.println("A derivada anal é "+τ_k_num);
-
+		if(verbosity>5){
+		System.out.println("Total time on network"+Gradient(x_k,x_k));
+		System.out.println("Total time on new paths considering old congestion "+Gradient(x_k,y_k));
+		}
 		double[] d_k_FW = Minus(y_k,x_k);
 
 		if(τ_km1>=1.0 || τ_km2>=1.0 || τ_km1<=0.0 || τ_km2<=0.0){ //the negative cases are likely when the problems dimension is so small that by conjugating you get to an ascending direction 
-			System.out.println("Linear search will be performed");
-			//Scanner scan = new Scanner(System.in);
-			//scan.next();
-			double τ_k=LineSearch(x_k , d_k_FW,Math.abs(τ_km1)); //Si négatif, on essaye juste d'en garder l'ordre de grandeur
+			if(verbosity>5) System.out.println("Linear search will be performed");
+			double τ_k=LineSearch(x_k , d_k_FW,Math.abs(τ_km1)); //If negative, we try only to keep the order of magnitude
 			return new step_result(1,0,0,τ_k,d_k_FW,matriz_de_caminhos,Double.NEGATIVE_INFINITY);//The -∞ is so that we do not converge after a such step
 		}
 
 		double[] d_km1_bar = Minus(s_km1 , x_k);
 		double[] d_km2_bar_bar = Plus(Minus(Times(τ_km1,s_km1),x_k),Times(1-τ_km1,s_km2));
-		double μ_k_num = Hessian(d_km2_bar_bar , x_k , d_k_FW);//TODO save a derivative calculation by deriving first and then calling Hessian?
+		double μ_k_num = Hessian(d_km2_bar_bar , x_k , d_k_FW);//TODO save a derivative calculation by deriving first and then calling Hessian? Most likely not worth it
 		double μ_k_den =  Hessian(d_km2_bar_bar , x_k , Minus(s_km2 ,s_km1));
 		double μ_k = -μ_k_num/μ_k_den;
 		double ν_k_left_num = Hessian(d_km1_bar, x_k ,d_k_FW) ;//Isso(ν) é infelizmente um nu!
@@ -199,119 +171,60 @@ public class BCFW {
 		double β_0_k = 1/(1+ μ_k+ν_k);
 		double β_1_k = β_0_k * ν_k;
 		double β_2_k = β_0_k * μ_k;
-		System.out.println("μ "+μ_k+" ν "+ν_k);
-		System.out.println("β_0 "+β_0_k+" β_1 "+β_1_k+" β_2 "+β_2_k);
+		if(verbosity>5) System.out.println("μ "+μ_k+" ν "+ν_k);
+		if(verbosity>5) System.out.println("β_0 "+β_0_k+" β_1 "+β_1_k+" β_2 "+β_2_k);
 		double[] d_k = Plus(Plus(Times(β_0_k,d_k_FW),Times(β_1_k,Minus(s_km1,x_k))),Times(β_2_k,Minus(s_km2,x_k)));
 		double τ_k_num = Gradient(x_k,d_k);
 		double τ_k_den = Hessian(d_k,x_k,d_k);
 		double τ_k =  -τ_k_num/τ_k_den;//Newton step
-		System.out.println("A derivada anal é "+τ_k_num);
+		if(verbosity>5) System.out.println("The analytic derivstive is"+τ_k_num);
 
 		/*
-		 * in this case, the direction odf descent is positive, that is, the objective increases
+		 * in this case, the direction of descent is positive, that is, the objective increases
 		 * This happens because when conjugating by the last two directions, it's not given that we get a negative derivative
 		 * This(having a negative derivative) should happen most of the time because we just found the minimum along a line in this direction, so the derivative 
 		 * in relation to these two directions should be zero, but as the step determination is not perfect , this is not valid
 		 * For the direction of iteration n-2 this is even worst, as we're no longer in the same point, so the 
 		 * derivative has also changed
-		 * We decide to take a FW step, but one coould also optionally choose to try a simple conjugated FW step
+		 * We decide to take a FW step, but one could also optionally choose to try a simple conjugated FW step
 		 * This can be tested in  the future
 		 */
 		if(τ_k < 0.0){
+			if(verbosity>5){
 			System.out.println("Linear search will be performed for τ_k < 0.0");
-			System.out.println("A derivada anal FW é "+Gradient(x_k,d_k_FW));
-			if(Gradient(x_k,d_k_FW) <  0 && Gradient(x_k,d_k_FW) >  0){
-				System.out.println("A derivada FW é positiva,  o que não deveria ocorrer nunca");
-				try {
-					PrintWriter timesF = new PrintWriter("D:\\lixo\\times", "UTF-8");
-					double[] times = new double[E];
-					for(int i = 0 ; i<E ; i++) times[i] = VDFs[i].valueAt(x_k[i],linkParameters[i]);
-					for(int i = 0 ; i<E ; i++) timesF.println(times[i]);
-					timesF.close();
-					PrintWriter FromF = new PrintWriter("D:\\lixo\\From", "UTF-8");
-					for(int i = 0 ; i<E ; i++) FromF.println(this.fromNode[i]);
-					FromF.close();
-					PrintWriter ToF = new PrintWriter("D:\\lixo\\To", "UTF-8");
-					for(int i = 0 ; i<E ; i++) ToF.println(this.toNode[i]);
-					ToF.close();
-					for(int f = 0 ; f<Centroides ; f++){
-						for(int t = 0 ; t<Centroides ; t++){
-							PrintWriter pathF = new PrintWriter("D:\\lixo\\path\\"+f+"_"+t, "UTF-8");
-							for(int l : matriz_de_caminhos[f][t]){
-								pathF.println(l+"\t"+fromNode[l]+"\t"+toNode[l]);
-							}
-							pathF.close();
-					}
-					}
-					PrintWriter custosF = new PrintWriter("D:\\lixo\\custo", "UTF-8");
-					for(int f = 0 ; f<Centroides ; f++){
-						for(int t = 0 ; t<Centroides ; t++){
-							double cost = 0.0;
-							for(int l : matriz_de_caminhos[f][t]) cost+= times[l];
-							custosF.println(f+"\t"+t+"\t"+cost+"\t"+OD[f][t]);
-					}
-					}
-					for(int l : matriz_de_caminhos[87][107]){
-						System.out.println(l+" "+fromNode[l]+" "+toNode[l]+" "+times[l]);
-					}
-					custosF.close();
-
-				} catch (FileNotFoundException | UnsupportedEncodingException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+			System.out.println("The analytic derivstive  FW is "+Gradient(x_k,d_k_FW));
 			}
-			τ_k=LineSearch(x_k , d_k_FW,Math.abs(τ_km1)); //Si négatif, on essaye juste d'en garder l'ordre de grandeur
-			
-			
-			
+			if(Gradient(x_k,d_k_FW) <  0 && Gradient(x_k,d_k_FW) >  0){
+				if(verbosity>5) System.out.println("FW dderivative is positive é positiva,  what should never occur");
+			}
+			τ_k=LineSearch(x_k , d_k_FW,Math.abs(τ_km1)); //If negative, we try to keep only the order of magnitude 
 			
 			return new step_result(1,0,0,τ_k,d_k_FW,matriz_de_caminhos,Double.NEGATIVE_INFINITY);//The -∞ is so that we do not converge after a such step
 
 		}
 		double τ_k_alt = LineSearch(x_k , d_k,Math.abs(τ_km1));
 		double obj_alt = ObjectiveFunction(Plus(x_k , Times(τ_k_alt , d_k)));
-		System.out.println("o passo busca linear é "+τ_k_alt+" com objetivo "+obj_alt);
+		if(verbosity>5) System.out.println("The step of linear search is"+τ_k_alt+" with objective"+obj_alt);
 
 		if(τ_k>1.0) τ_k=1.0;
 		double obj = ObjectiveFunction(Plus(x_k , Times(τ_k , d_k)));
-		System.out.println("o passo newton é "+τ_k+" com objetivo "+obj);
+		if(verbosity>5) System.out.println("Newton step is  "+τ_k+" with objective"+obj);
 
 		if(obj > obj_alt){
 			τ_k = τ_k_alt;
 		}
 		double lowerBound = ObjectiveFunction(x_k)+Gradient(x_k,d_k_FW);
-		System.out.println("lower bound "+lowerBound);
+		if(verbosity>5) System.out.println("lower bound "+lowerBound);
 		if(τ_k == 0.0){
-			double[] ones = new double[E];
-			for(int i = 0  ; i<E ; i++) ones[i]=1.0;
-			double derivada_dir_d_k = τ_k_num;
-			double h = 0.00000000001;
-			double numeric = (ObjectiveFunction(Plus(x_k,Times(h ,d_k )))-ObjectiveFunction(x_k))/h;
-			System.out.println("analitica "+derivada_dir_d_k+" numérica "+numeric);
-			System.out.println("ofbase + \" \"+ofmais+\" \"+numeri+\" \"+anal");
-			for(int i = 0 ; i< E ; i++){
-				double ofbase =  VDFs[i].integral(x_k[i],linkParameters[i]);
-				double ofmais = VDFs[i].integral(x_k[i]+h*d_k[i],linkParameters[i]);
-				double numeri =  (ofmais - ofbase)/h;
-				double anal = VDFs[i].valueAt(x_k[i],linkParameters[i]) * d_k[i];
-				System.out.println(ofbase + " "+ofmais+" "+numeri+" "+anal);
-				if(Math.abs(numeri - anal) > 100.0){
-					System.out.println(VDFs[i].getClass().getName()+" abo "+VDFs[i].getClass().getSimpleName());
-					/*teste.WPMainfunction fun = (WPMainfunction) VDFs[i];*/
-					System.out.println(VDFs[i]);
-					System.out.println("x x+h " + x_k[i]+"  "+(x_k[i]+h*d_k[i]));
-					for( double p : linkParameters[i]) System.out.print(p+ "  ");
-					System.out.println("param ");
-				}
-			}
+			if(verbosity>5) System.out.println("the step is zero ; this should never happen");
 		}
 		return new step_result(β_0_k,β_1_k,β_2_k,τ_k,d_k,matriz_de_caminhos,lowerBound);
 
 	}
 	/**
-	 * Busca linear para minimizar a função partinfo de x e indo em direção a d.
-	 * só é usada nas primeiras etapas ou em casos excepcionais, senão usamos um passo de Newton
+	 * Linear search to minimise the function from  x and going to d.
+	 * It's used on the first steps or in exceptional cases
+	 * Otherwise we use Newton's steps and we may compare with a linear search , choosing the best one 
 	 * @param x
 	 * @param d
 	 * @param τ_km1 
@@ -328,16 +241,18 @@ public class BCFW {
 			double[] volumes = Positive(Plus(x , Times(searchPoints[i],d)));
 			value[i] = ObjectiveFunction(volumes);
 		}
+		if(verbosity>5){
 		System.out.println("The objective and points are: ");
 		for(int i =0; i<value.length;i++) System.out.print("("+value[i]+","+searchPoints[i]+") ");
 		boolean erro = false;
 		
 		for(int i =0; i<value.length;i++) if(Double.isNaN(value[i]))erro = true;
 		if(erro) for(int i1 = 0; i1<x.length;i1++) System.out.println("x "+x[i1]+" d "+d[i1]);
-		
 		System.out.println("");		
+
+		}
 		double min =  FindMin(value , searchPoints);
-		System.out.println("o mínimo é "+min);
+		if(verbosity>5) System.out.println("The minimum is "+min);
 		if(min==0.0) {
 			if(dif<1.0E-10) return 0.0;
 			return LineSearch(x,d,dif);//TODO take this away when we have proper support for Best relative gap stopping criteria
@@ -361,7 +276,7 @@ public class BCFW {
 		return ParabolaMinimum(x,y);
 	}
 	/**
-	 * Givem three points, return the x of the minimum of the parabola
+	 * Given three points, return the x of the minimum of the parabola
 	 * @param x
 	 * @param y
 	 * @return
@@ -373,6 +288,7 @@ public class BCFW {
 		double y1 = y[0];
 		double y2 = y[1];
 		double y3 = y[2];
+		//TODO should one simplify factoring denom out is it clearer this way?
 		double denom = (x1 - x2)*(x1 - x3)*(x2 - x3);
 		double A = (x3 * (y2 - y1) + x2 * (y1 - y3) + x1 * (y3 - y2)) / denom;
 		double B = (x3*x3 * (y1 - y2) + x2 * x2 * (y3 - y1) + x1*x1* (y2 - y3)) / denom;
@@ -405,10 +321,10 @@ public class BCFW {
 	}
 
 	/**
-	 * Calcula (∇f)b onde ∇f é o gradiente da função no ponto x
-	 * @param x ponto em que se toma o gradiente
-	 * @param b vetor a ser multiplicado à direita
-	 * @return resultado do produto(vetor)
+	 * Calculates (∇f)b where ∇f is the gradient of the function on the point x
+	 * @param x point in which the gradient is taken
+	 * @param b vector to be multiplied at the right side
+	 * @return result of the multiplication(vector)
 	 */
 	private double Gradient(double[] x, double[] b) {
 		double ans = 0;
@@ -419,11 +335,11 @@ public class BCFW {
 		return ans;
 	}
 	/** 
-	 * Calcula o produto u'Hv , onde H é a hessiana tomada no ponto x
-	 * @param u vetor multiplicado à esquerda
-	 * @param x ponto em que se toma a Hessiana
-	 * @param v vetor multiplicado à direita
-	 * @return reultado do produto(real)
+	 * Calculates the product u'Hv , where H is the Hessian taken at the point x
+	 * @param u vector multiplied at the left side
+	 * @param x point in which the Hessian is taken
+	 * @param v vector multiplied at the right side
+	 * @return result of the multiplication(scalar)
 	 */
 	private double Hessian(double[] u, double[] x, double[] v) {
 		double ans = 0.0;
@@ -459,8 +375,8 @@ public class BCFW {
 	}
 	/**
 	 * 
-	 * @param x volumes na rede
-	 * @return rank three "matrix" such that the index are Centroid Centroid numer, 
+	 * @param x volumes on network
+	 * @return rank three "matrix" such that the index are Centroid Centroid number, 
 	 * and the element i j k is the number of the k-th link in the path from Centroid i to Centroid j 
 	 */
 	private int[][][] ShortestPath(double[] x) {
@@ -490,79 +406,6 @@ public class BCFW {
 		return ans;
 	}
 	
-	//this is equivalent to Dijkstra, the question is which one is faster
-	//this one is also wrong, so before using it would be better to debug
-	public int[][] Dijkstra(int root , double[] times) {
-		class distancedNode implements Comparable<distancedNode>{
-			public distancedNode(int number, double distance , int last , int father) {
-				super();
-				this.number = number;
-				this.distance = distance;
-				this.fromLink = last;
-				this.fromNode = father;
-			}
-			int number;
-			double distance;
-			int fromLink;
-			int fromNode;
-		@Override
-		public int compareTo(distancedNode specified) {
-			return (int) Math.signum(this.distance - specified.distance);
-		}
-		public String toString(){
-			return number+" "+distance+" "+fromLink+" "+fromNode;
-		}
-		}
-		double[] distances = new double[E]; //Não deveria ser V?
-		for(int n = 0; n<distances.length;n++) distances[n]=Double.POSITIVE_INFINITY;
-		distancedNode[] solved_nodes = new distancedNode[V];
-		PriorityQueue<distancedNode> candidates = new PriorityQueue<distancedNode>();
-		distances[root]=0.0;
-		int last_added = root;
-		solved_nodes[root] = new distancedNode(root, 0.0 , -1 , root);//he is his own father
-		boolean finished = false;
-		do{
-			double lad = distances[last_added];
-			for(int  link : exitingLinks[last_added]){
-				double time = times[link];
-				int candidate = toNode[link];
-				double present_distance = distances[candidate];
-				//Nesta linha entrariam os caminhos duplos
-				if(lad+time<present_distance)	candidates.add(new distancedNode(candidate,lad+time,link,last_added));
-				distances[candidate]=lad+time;
-			}
-			while(true){
-				if(candidates.isEmpty()){
-					finished = true;
-					break;
-				}
-				distancedNode next = candidates.poll();
-				if(next == null) break;
-				if(next.distance> distances[next.number]) continue;//old distancedNode, there is a shorter on candidates
-				//following is needed because we can have two paths with equal length to the same node
-				if(solved_nodes[next.number] != null) continue;//trying to come back to already visited node
-				last_added = next.number;
-				solved_nodes[next.number] = next;
-				break;
-			}
-		} while (!finished);
-		int paths[][] = new int[Centroides][];
-		for(int node =0 ; node<Centroides; node++)	{
-			ArrayList<Integer> links = new ArrayList<>();
-			distancedNode intermediary_node = solved_nodes[node];
-			if(intermediary_node==null) System.out.println("nó é "+node);
-			while(intermediary_node.fromLink>=0){
-				links.add(intermediary_node.fromLink);
-				intermediary_node = solved_nodes[intermediary_node.fromNode];
-			}
-			int l = links.size();
-			int[] path = new int[l];
-			for(int i1 = 1 ; i1<=l ; i1++)	path[i1-1] = links.get(l-i1);
-			paths[node] = path;
-		}
-
-		return paths;
-	}
 	
 	public int[][] Dijkstra2(int root , double[] times){
 
@@ -605,11 +448,11 @@ public class BCFW {
 	}
 	/**
 	 * faster Dijkstra
-	 * root is whece the paths go
+	 * root is whence the paths go
 	 * the answer is a  vector of 2 * V sized shortest path tree 
 	 * The first V nodes 0...V-1 with the following conventions:
-	 * thet root points to itself
-	 * unacccessible nodes point to -1
+	 * thetroot points to itself
+	 * unaccessible nodes point to -1
 	 * The other nodes point to their father
 	 * The nodes V ... 2*V  - 1 are the link that links to its father
 	 * The nodes 2*V ... 3*V-1 are the number of links separating it from the root
@@ -651,7 +494,7 @@ public class BCFW {
 				pais[2*V+neighboor] = pais[2*V+next]+1;
 			}
 		}
-		for(int i =0 ; i < V ; i++){//marcamos os nós inacessíveis
+		for(int i =0 ; i < V ; i++){//we mark unaccessible nodes
 			if(!feitos[i]) pais[i] = -1;
 		}
 		return pais;

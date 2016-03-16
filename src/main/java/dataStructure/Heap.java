@@ -37,7 +37,7 @@ public class Heap {
 		return ans;
 	}
 	/***
-	 * deleta o elemento na posição i e limpa o heap
+	 * deletes the element at position i and cleans the heap
 	 * supposes n>=1
 	 * @param i smaller than n
 	 */
